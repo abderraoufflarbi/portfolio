@@ -1,707 +1,474 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Abderraouffe Larbi — Procurement & Operations, FECO IT</title>
-<meta name="description" content="Abderraouffe Larbi — Chargé des Moyens Généraux at FECO Information Technology (Algeria). Procurement-to-payment, asset traceability and regulatory files.">
-<meta name="theme-color" content="#030b2c">
-<meta name="color-scheme" content="light">
-<meta property="og:type" content="profile">
-<meta property="og:title" content="Abderraouffe Larbi — Procurement & Operations">
-<meta property="og:description" content="Procurement-to-payment, asset traceability and regulatory files at FECO Information Technology.">
-<link rel="icon" type="image/png" href="assets/favicon.png">
-<link rel="preload" href="assets/fonts/playfair-display-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="assets/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"Person","name":"Abderraouffe Larbi","jobTitle":"Chargé des Moyens Généraux","worksFor":{"@type":"Organization","name":"FECO Information Technology"},"address":{"@type":"PostalAddress","addressLocality":"Bordj Bou Arréridj","addressCountry":"DZ"},"sameAs":["https://www.linkedin.com/in/abderraouffe-larbi/"]}
-</script>
-<style>
-@font-face{font-family:'Playfair Display';font-weight:400;font-style:normal;font-display:swap;src:url(assets/fonts/playfair-display-latin-400-normal.woff2) format('woff2')}
-@font-face{font-family:'Playfair Display';font-weight:400;font-style:italic;font-display:swap;src:url(assets/fonts/playfair-display-latin-400-italic.woff2) format('woff2')}
-@font-face{font-family:'Playfair Display';font-weight:700;font-style:normal;font-display:swap;src:url(assets/fonts/playfair-display-latin-700-normal.woff2) format('woff2')}
-@font-face{font-family:'Inter';font-weight:400;font-style:normal;font-display:swap;src:url(assets/fonts/inter-latin-400-normal.woff2) format('woff2')}
-@font-face{font-family:'Inter';font-weight:500;font-style:normal;font-display:swap;src:url(assets/fonts/inter-latin-500-normal.woff2) format('woff2')}
-@font-face{font-family:'Inter';font-weight:600;font-style:normal;font-display:swap;src:url(assets/fonts/inter-latin-600-normal.woff2) format('woff2')}
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Procedural procurement scenes. Everything is built from geometry and
+   canvas textures: no downloaded models, no external requests. */
 
-:root{
-  /* Brand — Supply chain & Co personal identity (flat colours only) */
-  --navy-950:#010514;
-  --navy-900:#030b2c;
-  --navy-800:#051240;
-  --silver:#c3c9d1;
-  --accent:#4a8fe8;          /* the single hairline blue from the letterhead */
+const C = { navy: 0x030b2c, navy2: 0x13266c, silver: 0xc3c9d1, white: 0xffffff, blue: 0x4a8fe8, steel: 0x5d6677 };
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const lerp = (a, b, k) => a + (b - a) * k;
 
-  --paper:#ffffff;
-  --mist:#f3f5f9;
-  --ink:#0a1330;
-  --body:#3a4560;
-  --muted:#5a6a8e;
-  --rule:#d9dee8;
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, metalness: o.m ?? 0.1, roughness: o.r ?? 0.5 });
+const add = (p, geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); p.add(o); return o; };
+const BOX = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+const CYL = (rt, rb, h, s = 48) => new THREE.CylinderGeometry(rt, rb, h, s);
+const shade = (o) => o.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
 
-  --on-navy:#c3c9d1;
-  --on-navy-muted:#8f9cbf;
-  --rule-navy:#1b2a5a;
-
-  --serif:'Playfair Display',Georgia,'Times New Roman',serif;
-  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-  --max:1120px;
+function webglOK() {
+  try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; }
 }
 
-html{font-size:16px;scroll-behavior:smooth;scroll-padding-top:84px}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-body{font-family:var(--sans);background:var(--navy-950);color:var(--body);line-height:1.65;-webkit-font-smoothing:antialiased}
-img{display:block;max-width:100%}
-a{color:inherit}
-:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* ── stage: renderer + lights + soft contact shadow ── */
+function makeStage(canvas, o) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.92;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  const scene = new THREE.Scene();
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = o.env ?? 0.4;
+  const camera = new THREE.PerspectiveCamera(o.fov || 30, 1, 1, 120);
 
-.wrap{max-width:var(--max);margin:0 auto;padding:0 40px}
-section{padding:104px 0}
+  const key = new THREE.DirectionalLight(0xffffff, 2.1);
+  key.position.set(7, 11, 8);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  const s = key.shadow.camera;
+  s.left = -o.shadow; s.right = o.shadow; s.top = o.shadow; s.bottom = -o.shadow; s.near = 1; s.far = 50;
+  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03; key.shadow.radius = 5;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(C.blue, 1.6);
+  rim.position.set(-8, 5, -7);
+  scene.add(rim);
 
-.eyebrow{font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
-.on-navy .eyebrow{color:var(--on-navy-muted)}
-h2{font-family:var(--serif);font-weight:700;font-size:clamp(32px,4vw,46px);line-height:1.12;color:var(--ink);letter-spacing:-.01em;margin-bottom:20px}
-.on-navy h2{color:#fff}
-h3{font-family:var(--serif);font-weight:700;font-size:22px;line-height:1.25;color:var(--ink)}
-.lede{font-size:17px;max-width:620px}
-.silver{color:var(--silver);font-weight:400}
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.ShadowMaterial({ opacity: 0.6 }));
+  sh.rotation.x = -Math.PI / 2; sh.receiveShadow = true; scene.add(sh);
 
-/* ── HEADER ── */
-header{position:sticky;top:0;z-index:50;background:var(--navy-900);border-bottom:1px solid var(--accent)}
-.bar{display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:72px}
-.brand{display:flex;align-items:center;gap:14px;text-decoration:none}
-.brand img{width:44px;height:44px;border-radius:50%}
-.brand-name{font-family:var(--serif);font-size:24px;font-weight:700;color:#fff;line-height:1;white-space:nowrap}
-nav ul{display:flex;gap:28px;list-style:none}
-nav a{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--on-navy);text-decoration:none;padding:6px 0;border-bottom:1px solid transparent}
-nav a:hover{color:#fff;border-bottom-color:var(--silver)}
-
-main{background:var(--paper)}
-
-/* ── INTRO: HERO + FIGURES ── */
-.intro{background:var(--navy-950)}
-#hero{background:var(--navy-900);padding:88px 0 96px;color:var(--on-navy)}
-.hero-grid{display:grid;grid-template-columns:1fr 340px;gap:72px;align-items:center}
-.hero-role{font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--on-navy-muted);margin-bottom:28px}
-#hero h1{font-family:var(--serif);font-weight:700;font-size:clamp(46px,6.2vw,88px);line-height:1.02;color:#fff;letter-spacing:-.02em;margin-bottom:32px}
-.ln{display:block}
-.hero-rule{width:96px;height:1px;background:var(--silver);opacity:.7;margin-bottom:28px}
-.hero-copy{font-size:17px;max-width:560px;color:var(--on-navy);margin-bottom:40px}
-.actions{display:flex;flex-wrap:wrap;gap:12px}
-.btn{display:inline-block;font-size:13px;font-weight:600;letter-spacing:.04em;text-decoration:none;padding:13px 26px;border-radius:2px;border:1px solid transparent}
-.btn-solid{background:#fff;color:var(--navy-900)}
-.btn-solid:hover{background:var(--silver)}
-.btn-line{border-color:var(--silver);color:#fff}
-.btn-line:hover{background:#fff;color:var(--navy-900)}
-.portrait{border:1px solid var(--rule-navy);background:var(--navy-800);overflow:hidden}
-.portrait img{width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;object-position:center top}
-
-#figures{background:var(--navy-950);padding:0;color:var(--on-navy)}
-.fig-grid{display:grid;grid-template-columns:repeat(4,1fr)}
-.fig{padding:36px 28px 36px 0}
-.fig+.fig{padding-left:28px;border-left:1px solid var(--rule-navy)}
-.fig-n{--fs:40px;font-family:var(--serif);font-size:var(--fs);font-weight:700;color:#fff;line-height:1;margin-bottom:10px}
-.fig-n small{font-size:20px;font-weight:400;color:var(--silver);margin-left:4px;white-space:nowrap}
-.fig-l{font-size:13px;color:var(--on-navy-muted);line-height:1.5}
-
-/* ── ABOUT ── */
-#about{background:var(--paper)}
-.about-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:80px;align-items:start}
-.about-grid p{margin-bottom:16px}
-.edu{margin-top:32px;border-top:1px solid var(--rule)}
-.edu-row{display:flex;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--rule)}
-.edu-row strong{font-weight:600;color:var(--ink);font-size:15px}
-.edu-row span{font-size:13px;color:var(--muted);white-space:nowrap}
-.how h3{margin-bottom:24px}
-.how-item{padding:20px 0;border-top:1px solid var(--rule)}
-.how-item:last-child{border-bottom:1px solid var(--rule)}
-.how-item h4{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:4px}
-.how-item p{font-size:14px;margin:0}
-
-/* ── EXPERIENCE ── */
-#experience{background:var(--mist)}
-.stack{margin-top:48px}
-.role{background:#fff;border:1px solid var(--rule);padding:44px;margin-top:28px}
-.role:first-child{margin-top:0}
-.role-top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:20px}
-.role-co{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:8px}
-.role-date{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;padding-top:6px}
-.role > p{max-width:760px;margin-bottom:24px}
-.role ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:12px 40px}
-.role li{font-size:14px;padding-left:18px;position:relative}
-.role li::before{content:'';position:absolute;left:0;top:.7em;width:6px;height:1px;background:var(--ink)}
-
-/* ── WORKFLOW ── */
-#workflow{background:var(--navy-900);color:var(--on-navy)}
-.wf-list{display:none}
-.wf-slides{list-style:none;display:grid;grid-template-columns:repeat(7,1fr);margin:48px 0 56px;border:1px solid var(--rule-navy)}
-.wf-slide{padding:22px 16px;border-left:1px solid var(--rule-navy)}
-.wf-slide:first-child{border-left:0}
-.wf-ic{width:44px;height:44px;margin-bottom:14px}
-.wf-n{display:block;font-family:var(--serif);font-size:15px;font-weight:400;font-style:italic;color:var(--silver);margin-bottom:8px}
-.wf-slide h3{font-family:var(--sans);font-size:13px;font-weight:500;color:#fff;letter-spacing:.02em;margin-bottom:8px}
-.wf-slide p{font-size:12.5px;color:var(--on-navy-muted);line-height:1.55}
-.cal{display:grid;grid-template-columns:repeat(3,1fr);gap:40px}
-.cal h3{font-size:18px;color:#fff;margin-bottom:10px}
-.cal p{font-size:14.5px;color:var(--on-navy)}
-.cal .tag{font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--on-navy-muted);margin-bottom:10px}
-
-/* ── SKILLS ── */
-#skills{background:var(--paper)}
-.skills{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:48px;border-top:1px solid var(--rule)}
-.skill{padding:28px 32px 28px 0;border-bottom:1px solid var(--rule)}
-.skill:nth-child(3n+2),.skill:nth-child(3n){padding-left:32px;border-left:1px solid var(--rule)}
-.skill h3{font-size:17px;margin-bottom:12px}
-.skill ul{list-style:none}
-.skill li{font-size:14px;padding:3px 0}
-
-/* ── CREDENTIALS + COMMUNITY ── */
-#credentials{background:var(--mist)}
-.cred-grid{display:grid;grid-template-columns:1fr 1fr;gap:80px}
-.cred{background:#fff;border:1px solid var(--rule);padding:28px 32px;margin-top:16px}
-.cred:first-of-type{margin-top:40px}
-.cred h3{font-size:19px;margin-bottom:6px}
-.cred p{font-size:13.5px;color:var(--muted)}
-.community p{margin-bottom:14px;font-size:15px}
-.community h2{margin-bottom:16px}
-
-/* ── OBJECTIVES ── */
-#objectives{background:var(--paper)}
-.obj{margin-top:48px;border-top:1px solid var(--rule)}
-.obj-row{display:grid;grid-template-columns:260px 1fr;gap:40px;padding:20px 0;border-bottom:1px solid var(--rule)}
-.obj-row b{font-family:var(--serif);font-size:18px;color:var(--ink)}
-.obj-row span{font-size:15px}
-
-/* ── SCENES (logistics transitions between sections) ── */
-.scene{position:relative;height:var(--sh,clamp(220px,30vw,420px));overflow:hidden;background:var(--sky)}
-.scene svg,.scene img{position:absolute;display:block}
-.scene .bg{inset:0;width:100%;height:100%;object-fit:cover}
-.scene .ground{left:0;bottom:-1px;width:100%;height:auto}
-.actor{--w:clamp(240px,36vw,560px);width:var(--w);height:auto;left:50%;top:50%;translate:-50% -50%;max-width:none}
-.actor.plane{--w:clamp(170px,26vw,380px)}.actor.plane.far{--w:clamp(110px,15vw,220px);top:30%;opacity:.95}.actor.truck{--w:clamp(300px,50vw,760px)}.actor.ship{--w:clamp(420px,76vw,1180px)}.actor.train{--w:clamp(480px,96vw,1500px);top:41%}
-.plane{top:12%}
-.plane.far{--w:clamp(110px,15vw,230px);top:6%;opacity:.55}
-.truck{--w:clamp(230px,33vw,500px);bottom:.2vw}
-.ship{--w:clamp(380px,56vw,860px);bottom:.2vw}
-
-/* ── NEWSLETTER CARD ── */
-.nl{display:flex;gap:18px;align-items:center;background:var(--navy-900);color:var(--on-navy);padding:20px 24px;margin-top:28px;text-decoration:none}
-.nl img{width:56px;height:56px;border-radius:50%;flex-shrink:0}
-.nl-k{font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--on-navy-muted);margin-bottom:4px}
-.nl-t{font-family:var(--serif);font-weight:700;font-size:24px;line-height:1.1;color:#fff}
-.nl-d{font-size:13.5px;margin:6px 0 0;color:var(--on-navy)}
-a.nl:hover .nl-t{color:var(--silver)}
-
-/* ── FINALE: Let's connect ── */
-#contact{background:var(--navy-900);color:var(--on-navy);padding:0}
-.fin-pin{position:relative;padding:104px 0}
-.fin-inner{display:grid;grid-template-columns:1fr 1.15fr;gap:80px;align-items:center}
-#contact h2{font-size:clamp(44px,6.4vw,92px);line-height:1;margin-bottom:24px}
-.contact-sub{max-width:420px}
-.links .lk{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:20px 0;border-top:1px solid var(--rule-navy);text-decoration:none;color:#fff}
-.links .lk:last-child{border-bottom:1px solid var(--rule-navy)}
-.lk small{display:block;font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--on-navy-muted);margin-bottom:2px}
-.lk b{font-family:var(--serif);font-weight:700;font-size:clamp(22px,2.6vw,34px);line-height:1.15;overflow-wrap:anywhere}
-.lk i{font-style:normal;font-family:var(--serif);font-size:28px;color:var(--silver);flex-shrink:0}
-.lk:hover b,.lk:hover i{color:var(--silver)}
-.doors{display:none}
-
-/* ── FOOTER ── */
-footer{background:var(--navy-950);color:var(--on-navy-muted);padding:48px 0 24px}
-.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding-bottom:32px;border-bottom:1px solid var(--rule-navy)}
-.facts small{display:block;font-size:12px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--on-navy-muted);margin-bottom:4px}
-.facts span{font-size:14px;color:#fff}
-.foot-top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:20px;font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase}
-.foot-top a{text-decoration:none;color:var(--on-navy)}
-.foot-top a:hover{color:#fff}
-
-/* ── RESPONSIVE ── */
-@media (max-width:960px){
-  section{padding:72px 0}
-  .wrap{padding:0 24px}
-  .hero-grid,.about-grid,.cred-grid{grid-template-columns:1fr;gap:48px}
-  .portrait{max-width:300px}
-  .fig-grid{grid-template-columns:repeat(2,1fr)}
-  .fig:nth-child(3){padding-left:0;border-left:0}
-  .fig:nth-child(n+3){border-top:1px solid var(--rule-navy)}
-  .wf-slides{grid-template-columns:repeat(2,1fr)}
-  .wf-slide{border-left:0;border-top:1px solid var(--rule-navy)}
-  .wf-slide:nth-child(-n+2){border-top:0}
-  .wf-slide:nth-child(even){border-left:1px solid var(--rule-navy)}
-  .cal{grid-template-columns:1fr;gap:28px}
-  .skills{grid-template-columns:1fr 1fr}
-  .skill,.skill:nth-child(3n+2),.skill:nth-child(3n){padding:24px 20px 24px 0;border-left:0}
-  .skill:nth-child(even){padding-left:24px;border-left:1px solid var(--rule)}
-  .role{padding:32px 24px}
-  .role ul{grid-template-columns:1fr}
-  .obj-row{grid-template-columns:1fr;gap:6px}
-  .fin-inner{grid-template-columns:1fr;gap:40px}
-  .facts{grid-template-columns:1fr 1fr}
-}
-@media (max-width:720px){
-  .bar{flex-wrap:wrap;padding-top:12px;padding-bottom:12px;gap:8px}
-  nav{width:100%;overflow-x:auto}
-  nav ul{gap:22px;white-space:nowrap}
-  .brand-name{font-size:21px}
-  html{scroll-padding-top:120px}
-}
-@media (max-width:560px){
-  .skills{grid-template-columns:1fr}
-  .skill:nth-child(even){padding-left:0;border-left:0}
-  .role-top{flex-direction:column;gap:4px}
-  .edu-row{flex-direction:column;gap:2px}
-  .fig-n{--fs:34px}
-  .wf-slides{grid-template-columns:1fr}
-  .wf-slide,.wf-slide:nth-child(even){border-left:0;border-top:1px solid var(--rule-navy)}
-  .wf-slide:first-child{border-top:0}
+  const resize = () => {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    o.onResize && o.onResize(camera, w, h);
+  };
+  new ResizeObserver(resize).observe(canvas);
+  resize();
+  return { renderer, scene, camera };
 }
 
-/* ════════════════════════════════════════════════════════════
-   MOTION — only for visitors who allow motion; scroll-driven
-   parts only where the browser supports them. Everything above
-   is the complete static fallback.
-   ════════════════════════════════════════════════════════════ */
-@property --n{syntax:'<integer>';inherits:false;initial-value:0}
-@property --a{syntax:'<integer>';inherits:false;initial-value:0}
-@property --b{syntax:'<integer>';inherits:false;initial-value:0}
+/* render loop that sleeps off-screen and renders single frames for reduced motion */
+function runner(stage, update) {
+  let vis = false, raf = 0;
+  const frame = (t) => {
+    raf = 0;
+    update(t / 1000);
+    stage.renderer.render(stage.scene, stage.camera);
+    if (vis && !reduce) raf = requestAnimationFrame(frame);
+  };
+  const kick = () => { if (!raf) raf = requestAnimationFrame(frame); };
+  new IntersectionObserver((e) => { vis = e[0].isIntersecting; if (vis) kick(); }).observe(stage.renderer.domElement);
+  return kick;
+}
 
-@media (prefers-reduced-motion:no-preference){
+function canvasTex(r, w, h, draw, bg = '#ffffff') {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  if (bg) { g.fillStyle = bg; g.fillRect(0, 0, w, h); }
+  draw(g, w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = r.capabilities.getMaxAnisotropy();
+  return t;
+}
+const SERIF = '"Playfair Display", Georgia, serif';
+const SANS = 'Inter, system-ui, sans-serif';
+const bars = (g, x, y, w, rows, gap, h, col, widths) => {
+  g.fillStyle = col;
+  for (let i = 0; i < rows; i++) g.fillRect(x, y + i * gap, w * (widths ? widths[i % widths.length] : 1), h);
+};
 
-  /* 1 · Load: headline lines rise out of a mask, portrait opens like a curtain */
-  .ln{overflow:hidden;padding-bottom:.1em;margin-bottom:-.1em}
-  .ln>span{display:block;transform:translateY(112%);animation:lineUp 1.2s cubic-bezier(.16,1,.3,1) forwards;animation-delay:calc(.12s + var(--d,0) * .11s)}
-  @keyframes lineUp{to{transform:none}}
-  .hero-role,.hero-rule,.hero-copy,.actions{opacity:0;animation:fadeUp .9s cubic-bezier(.16,1,.3,1) forwards}
-  .hero-role{animation-delay:.05s}
-  .hero-rule{animation-delay:.6s}
-  .hero-copy{animation-delay:.7s}
-  .actions{animation-delay:.82s}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
-  .portrait{clip-path:inset(0 0 100% 0);animation:curtain 1.3s cubic-bezier(.76,0,.24,1) .3s forwards}
-  .portrait img{transform:scale(1.22);animation:settle 1.8s cubic-bezier(.16,1,.3,1) .3s forwards}
-  @keyframes curtain{to{clip-path:inset(0 0 0 0)}}
-  @keyframes settle{to{transform:none}}
+/* ── shared prop builders ── */
+function carton(w, h, d, tape = true) {
+  const g = new THREE.Group();
+  add(g, BOX(w, h, d), mat(0xe6eaf1, { r: 0.85 }));
+  if (tape) {
+    add(g, BOX(w * 0.16, h + 0.006, d + 0.006), mat(C.blue, { r: 0.4 }));
+    add(g, BOX(w * 0.34, h * 0.2, 0.006), mat(C.navy, { r: 0.6 }), -w * 0.22, h * 0.08, d / 2 + 0.004);
+  }
+  return g;
+}
 
-  @supports (animation-timeline:view()){
-
-    /* 2 · Hero recedes while the page slides over it */
-    @media (min-width:961px) and (min-height:640px){
-      #hero{position:sticky;top:72px;min-height:calc(100svh - 72px);display:flex;align-items:center;transform-origin:50% 100%;animation:recede linear both;animation-timeline:scroll(root);animation-range:0 100svh}
-      #hero>.wrap{width:100%}
-      #figures{position:relative;z-index:2}
+function paperTexture(r, kind) {
+  return canvasTex(r, 1024, 1448, (g, w, h) => {
+    if (kind === 'po') {
+      g.fillStyle = '#030b2c'; g.fillRect(0, 0, w, 250);
+      g.fillStyle = '#fff'; g.font = `700 82px ${SERIF}`; g.fillText('Bon de commande', 70, 135);
+      g.fillStyle = '#8f9cbf'; g.font = `500 34px ${SANS}`; g.fillText('PURCHASE ORDER', 72, 195);
+      g.fillStyle = '#4a8fe8'; g.fillRect(70, 250, w - 140, 4);
+      bars(g, 70, 320, w - 140, 3, 70, 26, '#d9dee8', [0.5, 0.7, 0.4]);
+      g.strokeStyle = '#c3c9d1'; g.lineWidth = 3;
+      for (let i = 0; i < 8; i++) { const y = 590 + i * 84; g.beginPath(); g.moveTo(70, y); g.lineTo(w - 70, y); g.stroke(); }
+      bars(g, 90, 620, w - 180, 7, 84, 20, '#e6eaf1', [0.62, 0.8, 0.5, 0.7, 0.4, 0.66, 0.55]);
+      g.fillStyle = '#030b2c'; g.fillRect(w - 430, 1290, 360, 54);
+    } else if (kind === 'req') {
+      g.fillStyle = '#030b2c'; g.font = `700 74px ${SERIF}`; g.fillText('Requirement', 70, 140);
+      g.fillStyle = '#4a8fe8'; g.fillRect(70, 175, 160, 4);
+      for (let i = 0; i < 6; i++) {
+        const y = 290 + i * 170;
+        g.strokeStyle = '#030b2c'; g.lineWidth = 6; g.strokeRect(80, y, 70, 70);
+        if (i < 4) { g.strokeStyle = '#4a8fe8'; g.lineWidth = 12; g.beginPath(); g.moveTo(92, y + 38); g.lineTo(116, y + 62); g.lineTo(168, y - 14); g.stroke(); }
+        bars(g, 200, y + 14, 700, 1, 0, 24, '#c3c9d1', [1 - (i % 3) * 0.16]);
+        bars(g, 200, y + 54, 700, 1, 0, 14, '#e6eaf1', [0.6]);
+      }
+    } else if (kind === 'inv') {
+      g.fillStyle = '#030b2c'; g.font = `700 80px ${SERIF}`; g.fillText('Invoice', 70, 140);
+      g.fillStyle = '#4a8fe8'; g.fillRect(70, 175, 160, 4);
+      bars(g, 70, 250, w - 140, 2, 56, 22, '#d9dee8', [0.45, 0.62]);
+      g.strokeStyle = '#c3c9d1'; g.lineWidth = 3;
+      for (let i = 0; i < 9; i++) { const y = 420 + i * 92; g.beginPath(); g.moveTo(70, y); g.lineTo(w - 70, y); g.stroke(); }
+      bars(g, 90, 450, w - 180, 8, 92, 20, '#e6eaf1', [0.7, 0.5, 0.82, 0.6, 0.45, 0.76, 0.55, 0.66]);
+      g.fillStyle = '#030b2c'; g.fillRect(70, 1290, w - 140, 90);
+      g.fillStyle = '#fff'; g.fillRect(100, 1326, 220, 18);
     }
-    @keyframes recede{to{transform:scale(.88);opacity:.25;border-radius:44px}}
+  });
+}
 
-    /* 3 · Logistics scenes: a plane, a truck with a container, a ship and a port crane
-          cross the screen as the page scrolls from one section to the next */
-    .scene{view-timeline:--sc block}
-    .plane{animation:fly linear both;animation-timeline:--sc;animation-range:cover 0% cover 100%}
-    .plane.far{animation-name:fly-far}
-    .truck{animation:drive linear both;animation-timeline:--sc;animation-range:cover 0% cover 100%}
-    .ship{animation:sail linear both;animation-timeline:--sc;animation-range:cover 0% cover 100%}
-    .train{animation:drive linear both;animation-timeline:--sc;animation-range:cover 0% cover 100%}
-    @keyframes fly{from{transform:translateX(-92vw) translateY(22%) rotate(-3deg)}to{transform:translateX(92vw) translateY(-26%) rotate(-8deg)}}
-    @keyframes fly-far{from{transform:translateX(86vw) scaleX(-1)}to{transform:translateX(-92vw) scaleX(-1)}}
-    @keyframes drive{from{transform:translateX(-92vw)}to{transform:translateX(92vw)}}
-    @keyframes sail{from{transform:translateX(-78vw)}to{transform:translateX(78vw)}}
-    @keyframes lower{from{transform:translateY(0)}to{transform:translateY(148px)}}
-    .reveal>.wrap{animation:rise linear both;animation-timeline:view();animation-range:cover 22svh cover 72svh}
-    @keyframes rise{from{opacity:0;transform:translateY(48px)}to{opacity:1;transform:none}}
+/* ═════════════════════ HERO: container, cartons, purchase order ═════════════════════ */
+function buildHero(stage) {
+  const { scene, renderer } = stage;
+  const root = new THREE.Group();
+  scene.add(root);
 
-    /* 4 · Section titles lift out of a mask as they arrive */
-    h2{animation:h2in linear both;animation-timeline:view();animation-range:entry 8% entry 75%}
-    @keyframes h2in{from{clip-path:inset(0 0 105% 0);transform:translateY(.45em)}to{clip-path:inset(-.2em -.1em -.2em -.1em);transform:none}}
+  const L = 6, W = 2.4, H = 2.6, t = 0.07;
+  const steel = mat(0x9ba5b6, { m: 0.6, r: 0.4 });
+  const dark = mat(C.steel, { m: 0.7, r: 0.4 });
+  const cont = new THREE.Group();
+  cont.position.y = 0.14;
+  root.add(cont);
 
-    /* 5 · Experience cards stack: the next role slides over the previous */
-    .stack{view-timeline:--stack block}
-    @media (min-height:700px){
-      .role{position:sticky;top:104px}
-      .role+.role{top:128px}
+  add(cont, BOX(L, t, W), mat(0x1a2347, { m: 0.3, r: 0.7 }), 0, t / 2, 0);
+  add(cont, BOX(L, t, W), steel, 0, H - t / 2, 0);
+  add(cont, BOX(t, H, W), steel, -L / 2 + t / 2, H / 2, 0);
+  [1, -1].forEach((sd) => add(cont, BOX(L, H, t), steel, 0, H / 2, sd * (W / 2 - t / 2)));
+
+  // corrugation: instanced ridges on both long sides
+  const n = Math.floor((L - 0.5) / 0.16);
+  const ridge = new THREE.InstancedMesh(BOX(0.06, H - 0.36, 0.05), steel, n * 2);
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i < n; i++) {
+    const x = -L / 2 + 0.3 + i * 0.16;
+    m4.makeTranslation(x, H / 2, W / 2 + 0.02); ridge.setMatrixAt(i, m4);
+    m4.makeTranslation(x, H / 2, -W / 2 - 0.02); ridge.setMatrixAt(n + i, m4);
+  }
+  ridge.castShadow = ridge.receiveShadow = true;
+  cont.add(ridge);
+
+  // frame
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => add(cont, BOX(0.15, H, 0.15), dark, sx * (L / 2 - 0.075), H / 2, sz * (W / 2 - 0.075)));
+  [0.06, H - 0.06].forEach((y) => [1, -1].forEach((sz) => add(cont, BOX(L, 0.12, 0.12), dark, 0, y, sz * (W / 2 - 0.06))));
+  [0.06, H - 0.06].forEach((y) => [1, -1].forEach((sx) => add(cont, BOX(0.12, 0.12, W), dark, sx * (L / 2 - 0.06), y, 0)));
+
+  // side marking
+  const mark = canvasTex(renderer, 1024, 300, (g, w, h) => {
+    g.fillStyle = '#030b2c'; g.font = `700 92px ${SERIF}`; g.fillText('Supply Chain & Co', 24, 120);
+    g.font = `500 44px ${SANS}`; g.fillStyle = '#13266c'; g.fillText('22G1  ·  20′ GP', 28, 200);
+    g.fillStyle = '#4a8fe8'; g.fillRect(28, 236, 140, 6);
+  }, null);
+  const markM = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 0.79), new THREE.MeshStandardMaterial({ map: mark, transparent: true, roughness: 0.5, metalness: 0.2 }));
+  markM.position.set(-1.3, H * 0.74, W / 2 + 0.056);
+  cont.add(markM);
+
+  // cargo inside (visible once the doors swing open)
+  const cargo = new THREE.Group();
+  for (let ix = 0; ix < 4; ix++) for (let iz = 0; iz < 3; iz++) for (let iy = 0; iy < 3; iy++) {
+    const c = carton(0.8, 0.62, 0.62, true);
+    c.position.set(L / 2 - 0.7 - ix * 0.9, t + 0.31 + iy * 0.66, (iz - 1) * 0.72);
+    cargo.add(c);
+  }
+  cont.add(cargo);
+
+  // doors
+  const doors = [];
+  [1, -1].forEach((sd) => {
+    const piv = new THREE.Group();
+    piv.position.set(L / 2 - 0.02, 0, sd * (W / 2 - 0.02));
+    const panel = new THREE.Group();
+    const pw = W / 2 - 0.05;
+    panel.position.z = -sd * pw / 2;
+    add(panel, BOX(t, H - 0.14, pw), steel, 0, H / 2, 0);
+    for (let i = 0; i < 5; i++) add(panel, BOX(0.045, H - 0.5, 0.05), steel, t / 2 + 0.02, H / 2, -pw / 2 + 0.17 + i * (pw - 0.34) / 4);
+    [-0.3, 0.3].forEach((dz) => {
+      add(panel, CYL(0.022, 0.022, H - 0.3, 16), dark, t / 2 + 0.085, H / 2, dz * sd * -1);
+      add(panel, BOX(0.05, 0.3, 0.07), mat(C.navy, { r: 0.4, m: 0.4 }), t / 2 + 0.12, H / 2, dz * sd * -1);
+    });
+    piv.add(panel);
+    cont.add(piv);
+    doors.push({ piv, sd });
+  });
+
+  // pallet with cartons, in front of the doors
+  const pal = new THREE.Group();
+  pal.position.set(L / 2 + 3.2, 0, -2.5);
+  pal.rotation.y = 0.3;
+  const plastic = mat(C.navy2, { m: 0.25, r: 0.5 });
+  add(pal, BOX(1.7, 0.1, 1.3), plastic, 0, 0.2, 0);
+  [-0.7, 0, 0.7].forEach((x) => add(pal, BOX(0.22, 0.14, 1.3), plastic, x, 0.07, 0));
+  for (let iy = 0; iy < 3; iy++) for (let ix = 0; ix < 2; ix++) for (let iz = 0; iz < 2; iz++) {
+    const c = carton(0.8, 0.54, 0.6, true);
+    c.position.set(-0.41 + ix * 0.82, 0.25 + 0.27 + iy * 0.55, -0.31 + iz * 0.62);
+    pal.add(c);
+  }
+  root.add(pal);
+
+  // purchase order floating above the pallet
+  const po = new THREE.Group();
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.77), new THREE.MeshStandardMaterial({ map: paperTexture(renderer, 'po'), roughness: 0.7, side: THREE.DoubleSide }));
+  po.add(paper);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.022, 16, 64), new THREE.MeshBasicMaterial({ color: C.blue }));
+  ring.position.set(0.3, -0.58, 0.004);
+  po.add(ring);
+  po.position.set(L / 2 + 3.2, 2.95, -2.5);
+  root.add(po);
+
+  // floor disc with soft falloff
+  const fl = canvasTex(renderer, 1024, 1024, (g, w, h) => {
+    const gr = g.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w / 2);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.45, 'rgba(255,255,255,.6)'); gr.addColorStop(0.8, 'rgba(255,255,255,.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  }, null);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(9, 64), new THREE.MeshStandardMaterial({ color: 0x061a52, roughness: 1, metalness: 0, alphaMap: fl, transparent: true }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = 0.02; disc.receiveShadow = false; disc.material.depthWrite = false; disc.renderOrder = -1;
+  root.add(disc);
+
+  shade(root);
+  disc.castShadow = false; disc.receiveShadow = false;
+
+  const target = new THREE.Vector3(2.7, 1.25, -0.6);
+  const mouse = { x: 0, y: 0, sx: 0, sy: 0 };
+  addEventListener('pointermove', (e) => { mouse.x = e.clientX / innerWidth - 0.5; mouse.y = e.clientY / innerHeight - 0.5; }, { passive: true });
+  let dist = 14;
+  const openAt = reduce ? 1 : 0;
+  const t0 = performance.now();
+
+  stage.fit = (camera, w, h) => { dist = Math.max(14, 9.2 / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect)); };
+
+  const kick = runner(stage, (time) => {
+    const open = reduce ? 1 : ease(clamp((performance.now() - t0 - 700) / 2600));
+    const ang = open * 1.75;
+    doors.forEach((d) => { d.piv.rotation.y = d.sd > 0 ? -ang : ang; });
+    cargo.visible = open > 0.02;
+    const sp = clamp(scrollY / (innerHeight * 0.9));
+    mouse.sx = lerp(mouse.sx, mouse.x, 0.05); mouse.sy = lerp(mouse.sy, mouse.y, 0.05);
+    const az = THREE.MathUtils.degToRad(40 - sp * 22 - mouse.sx * 14);
+    const el = THREE.MathUtils.degToRad(15 + sp * 10 - mouse.sy * 6);
+    const d = dist * (1 - sp * 0.12);
+    stage.camera.position.set(target.x + Math.cos(az) * Math.cos(el) * d, target.y + Math.sin(el) * d, target.z + Math.sin(az) * Math.cos(el) * d);
+    stage.camera.lookAt(target);
+    po.position.y = 2.95 + Math.sin(time * 0.9) * 0.08;
+    po.rotation.y = -0.2 + Math.sin(time * 0.5) * 0.18;
+  });
+  addEventListener('scroll', kick, { passive: true });
+  addEventListener('pointermove', () => { if (reduce) kick(); }, { passive: true });
+  return kick;
+}
+
+/* ═════════════════════ WORKFLOW: seven objects, one per stage ═════════════════════ */
+const SP = 3.6;
+
+function objRequirement(r) {
+  const g = new THREE.Group();
+  const lean = new THREE.Group(); lean.rotation.x = -0.2; g.add(lean);
+  add(lean, BOX(1.3, 1.78, 0.08), mat(C.navy2, { m: 0.3, r: 0.45 }), 0, 1.0, 0);
+  add(lean, new THREE.PlaneGeometry(1.08, 1.52), new THREE.MeshStandardMaterial({ map: paperTexture(r, 'req'), roughness: 0.75 }), 0, 0.97, 0.047);
+  add(lean, BOX(0.56, 0.2, 0.12), mat(C.silver, { m: 0.8, r: 0.3 }), 0, 1.92, 0.06);
+  return g;
+}
+function objQuotation() {
+  const g = new THREE.Group();
+  const steel = mat(C.silver, { m: 0.8, r: 0.3 });
+  add(g, CYL(0.6, 0.7, 0.1), mat(C.navy2, { m: 0.3, r: 0.45 }), 0, 0.05, 0);
+  add(g, CYL(0.06, 0.06, 1.75, 24), steel, 0, 0.95, 0);
+  const beam = new THREE.Group(); beam.position.y = 1.82; g.add(beam);
+  add(beam, BOX(2.2, 0.07, 0.1), steel);
+  add(beam, new THREE.SphereGeometry(0.1, 24, 16), mat(C.blue, { m: 0.5, r: 0.3 }), 0, 0.02, 0);
+  const pans = [-1, 1].map((s) => {
+    const p = new THREE.Group(); p.position.set(s * 1.0, 0, 0); beam.add(p);
+    for (let k = -1; k <= 1; k += 2) add(p, CYL(0.008, 0.008, 0.95, 8), steel, k * 0.2, -0.47, 0).rotation.z = -k * 0.2;
+    add(p, CYL(0.46, 0.38, 0.06, 48), steel, 0, -0.95, 0);
+    return p;
+  });
+  const c = carton(0.5, 0.36, 0.4); c.position.set(0, -0.74, 0); pans[0].add(c);
+  add(pans[1], CYL(0.16, 0.16, 0.06, 32), mat(C.blue, { m: 0.6, r: 0.3 }), -0.1, -0.89, 0);
+  add(pans[1], CYL(0.16, 0.16, 0.06, 32), mat(C.blue, { m: 0.6, r: 0.3 }), 0.12, -0.83, 0.1);
+  g.userData.tick = (t) => { const a = Math.sin(t * 0.9) * 0.07; beam.rotation.z = a; pans.forEach((p) => { p.rotation.z = -a; }); };
+  return g;
+}
+function objPO(r) {
+  const g = new THREE.Group();
+  const lean = new THREE.Group(); lean.rotation.x = -0.95; lean.position.set(0, 0.2, 0.1); g.add(lean);
+  add(lean, BOX(1.4, 1.98, 0.03), mat(0xffffff, { r: 0.8 }), 0, 1.0, 0);
+  add(lean, new THREE.PlaneGeometry(1.4, 1.98), new THREE.MeshStandardMaterial({ map: paperTexture(r, 'po'), roughness: 0.7 }), 0, 1.0, 0.017);
+  const stamp = new THREE.Group(); stamp.position.set(0.3, 1.5, 0.45); g.add(stamp);
+  add(stamp, CYL(0.3, 0.3, 0.1, 48), mat(C.silver, { m: 0.8, r: 0.3 }), 0, 0, 0);
+  add(stamp, CYL(0.08, 0.1, 0.5, 24), mat(C.navy, { m: 0.4, r: 0.35 }), 0, 0.3, 0);
+  add(stamp, new THREE.SphereGeometry(0.15, 24, 16), mat(C.navy, { m: 0.4, r: 0.35 }), 0, 0.58, 0);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.026, 16, 64), new THREE.MeshBasicMaterial({ color: C.blue }));
+  ring.rotation.x = -0.95; ring.position.set(0.3, 0.87, 0.9); ring.visible = false;
+  g.userData.tick = (t) => { stamp.position.y = 1.5 + Math.abs(Math.sin(t * 1.2)) * 0.18; };
+  return g;
+}
+function objReception(r) {
+  const g = new THREE.Group();
+  const a = carton(1.15, 0.8, 0.9); a.position.set(-0.2, 0.4, 0); a.rotation.y = 0.15; g.add(a);
+  const b = carton(0.9, 0.65, 0.75); b.position.set(0.1, 1.12, 0); b.rotation.y = -0.2; g.add(b);
+  const c = carton(0.7, 0.5, 0.6); c.position.set(0.85, 0.25, 0.4); c.rotation.y = 0.4; g.add(c);
+  const tick = canvasTex(r, 256, 256, (gx) => {
+    gx.fillStyle = '#4a8fe8'; gx.beginPath(); gx.arc(128, 128, 126, 0, 7); gx.fill();
+    gx.strokeStyle = '#fff'; gx.lineWidth = 22; gx.lineCap = 'round'; gx.lineJoin = 'round';
+    gx.beginPath(); gx.moveTo(72, 132); gx.lineTo(112, 172); gx.lineTo(184, 92); gx.stroke();
+  }, null);
+  const badge = new THREE.Mesh(new THREE.CircleGeometry(0.3, 48), new THREE.MeshBasicMaterial({ map: tick, transparent: true, toneMapped: false }));
+  badge.position.set(0.1, 1.85, 0.5);
+  g.add(badge);
+  g.userData.tick = (t) => { badge.position.y = 1.85 + Math.sin(t * 1.4) * 0.05; };
+  return g;
+}
+function objInvoice(r) {
+  const g = new THREE.Group();
+  const geo = new THREE.PlaneGeometry(1.25, 2.1, 1, 28);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setZ(i, Math.sin(y * 2.0) * 0.16 + y * 0.05); }
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: paperTexture(r, 'inv'), roughness: 0.7, side: THREE.DoubleSide }));
+  m.position.set(0, 1.28, 0); m.rotation.y = -0.25;
+  g.add(m);
+  add(g, CYL(0.36, 0.36, 0.06, 40), mat(C.silver, { m: 0.8, r: 0.3 }), 0.1, 0.03, 0.35);
+  return g;
+}
+function objPayment() {
+  const g = new THREE.Group();
+  const stone = mat(0xe6eaf1, { r: 0.55, m: 0.1 });
+  const steel = mat(C.silver, { m: 0.7, r: 0.35 });
+  add(g, BOX(2.3, 0.12, 1.35), steel, 0, 0.06, 0);
+  add(g, BOX(2.05, 0.12, 1.15), stone, 0, 0.18, 0);
+  for (let i = 0; i < 5; i++) add(g, CYL(0.1, 0.1, 1.05, 28), stone, -0.8 + i * 0.4, 0.8, 0);
+  add(g, BOX(2.0, 0.16, 0.95), stone, 0, 1.4, 0);
+  const ped = add(g, CYL(0.62, 0.62, 0.95, 3), stone, 0, 1.76, 0);
+  ped.rotation.x = -Math.PI / 2; ped.scale.set(1.8, 1, 0.55);
+  add(g, BOX(1.6, 0.05, 0.05), mat(C.blue, { m: 0.4, r: 0.3 }), 0, 1.5, 0.48);
+  const coin = new THREE.Group(); coin.position.set(1.55, 0.5, 0.35); g.add(coin);
+  for (let i = 0; i < 3; i++) add(coin, CYL(0.26, 0.26, 0.07, 48), mat(C.blue, { m: 0.8, r: 0.28 }), 0, i * 0.08, 0);
+  return g;
+}
+function objArchive() {
+  const g = new THREE.Group();
+  add(g, BOX(1.35, 2.05, 0.95), mat(C.navy2, { m: 0.4, r: 0.4 }), 0, 1.03, 0);
+  const steel = mat(C.silver, { m: 0.75, r: 0.32 });
+  const darkM = mat(C.navy, { m: 0.5, r: 0.4 });
+  const drawers = [0.4, 1.03, 1.66].map((y, i) => {
+    const d = new THREE.Group(); d.position.set(0, y, 0.48); g.add(d);
+    add(d, BOX(1.2, 0.58, 0.05), steel);
+    add(d, BOX(0.42, 0.06, 0.07), darkM, 0, 0.08, 0.05);
+    add(d, BOX(0.34, 0.12, 0.012), mat(0xffffff, { r: 0.7 }), 0, -0.1, 0.03);
+    if (i === 1) {
+      add(d, BOX(1.1, 0.48, 0.05), darkM, 0, 0, -0.03);
+      for (let k = 0; k < 7; k++) add(d, BOX(0.05, 0.4, 0.62), mat(k % 3 === 0 ? C.blue : 0xe6eaf1, { r: 0.7 }), -0.45 + k * 0.15, 0.05, -0.32);
     }
-    .role:first-child{transform-origin:50% 0;animation:stackBack linear both;animation-timeline:--stack;animation-range:cover 40% cover 70%}
-    @keyframes stackBack{to{transform:scale(.95);filter:brightness(.93)}}
+    return d;
+  });
+  g.userData.tick = (t) => { drawers[1].position.z = 0.48 + (0.24 + Math.sin(t * 0.9) * 0.12); };
+  return g;
+}
 
-    /* 6 · Key figures count up */
-    .count{font-size:0}
-    .count::before{font-size:var(--fs);content:counter(n)}
-    .count{counter-reset:n var(--n)}
-    .count.dec{counter-reset:a var(--a) b var(--b)}
-    .count.dec::before{content:counter(a) "." counter(b,decimal-leading-zero)}
-    .count{animation-timing-function:linear;animation-fill-mode:both;animation-timeline:view();animation-range:cover 0 cover 45svh}
-    .count.c12{animation-name:to12}
-    .count.c4{animation-name:to4}
-    .count.dec{animation-name:to876}
-    @keyframes to12{to{--n:12}}
-    @keyframes to4{to{--n:4}}
-    @keyframes to876{to{--a:8;--b:76}}
+function buildWorkflow(stage, host) {
+  const { scene, renderer, camera } = stage;
+  const makers = [objRequirement, objQuotation, objPO, objReception, objInvoice, objPayment, objArchive];
+  const items = makers.map((mk, i) => {
+    const slot = new THREE.Group();
+    slot.position.x = i * SP;
+    const plinth = new THREE.Group();
+    add(plinth, CYL(1.42, 1.5, 0.14, 64), mat(C.navy2, { m: 0.35, r: 0.5 }), 0, 0.07, 0);
+    const edge = new THREE.Mesh(new THREE.RingGeometry(1.22, 1.27, 96), new THREE.MeshBasicMaterial({ color: C.silver, transparent: true, opacity: 0.45 }));
+    edge.rotation.x = -Math.PI / 2; edge.position.y = 0.145; plinth.add(edge);
+    slot.add(plinth);
+    const obj = mk(renderer);
+    const holder = new THREE.Group(); holder.position.y = 0.14; holder.add(obj); slot.add(holder);
+    slot.userData = { i };
+    shade(slot);
+    edge.castShadow = false;
+    scene.add(slot);
+    return { slot, holder, obj, edge, i };
+  });
 
-    /* 7 · Workflow is pinned; scrolling advances it one step at a time */
-    .wf-track{height:520svh;view-timeline:--wf block}
-    .wf-pin{position:sticky;top:72px;height:calc(100svh - 72px);display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:56px;align-items:center}
-    .wf-head h2{margin-bottom:16px}
-    .wf-list{display:block;list-style:none;margin-top:32px}
-    .wf-list li{display:flex;gap:14px;align-items:baseline;padding:5px 0;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#fff;opacity:.35;animation:lit linear both;animation-timeline:--wf;animation-range:contain calc(var(--i) * 14.2857%) contain calc((var(--i) + 1) * 14.2857%)}
-    .wf-list b{font-family:var(--serif);font-size:15px;font-weight:400;font-style:italic;letter-spacing:0;text-transform:none;color:var(--silver)}
-    .wf-list li:last-child{animation-name:lit-last}
-    @keyframes lit{0%{opacity:.35}1%{opacity:1}99%{opacity:1}100%{opacity:.55}}
-    @keyframes lit-last{0%{opacity:.35}1%,100%{opacity:1}}
-    .wf-slides{display:block;position:relative;height:100%;margin:0;border:0}
-    .wf-slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0;border:0;animation:slide linear both;animation-timeline:--wf;animation-range:contain calc(var(--i) * 14.2857%) contain calc((var(--i) + 1) * 14.2857%)}
-    .wf-slide:first-child{animation-name:slide-first}
-    .wf-slide:last-child{animation-name:slide-last}
-    .wf-ic{position:absolute;right:0;top:4%;width:clamp(110px,15vw,220px);height:auto;margin:0}
-    .wf-n{font-size:clamp(120px,19vw,280px);line-height:.8;margin-bottom:.24em;opacity:.95}
-    .wf-slide h3{font-family:var(--serif);font-size:clamp(34px,4.6vw,64px);font-weight:700;line-height:1.05;letter-spacing:-.01em;margin-bottom:18px}
-    .wf-slide p{font-size:18px;max-width:460px;color:var(--on-navy)}
-    @keyframes slide{
-      0%{opacity:0;transform:translateY(64px);clip-path:inset(0 0 100% 0)}
-      16%{opacity:1;transform:none;clip-path:inset(-5% -5% -5% -5%)}
-      84%{opacity:1;transform:none;clip-path:inset(-5% -5% -5% -5%)}
-      100%{opacity:0;transform:translateY(-64px);clip-path:inset(100% 0 0 0)}}
-    @keyframes slide-first{
-      0%,84%{opacity:1;transform:none;clip-path:inset(-5% -5% -5% -5%)}
-      100%{opacity:0;transform:translateY(-64px);clip-path:inset(100% 0 0 0)}}
-    @keyframes slide-last{
-      0%{opacity:0;transform:translateY(64px);clip-path:inset(0 0 100% 0)}
-      16%,100%{opacity:1;transform:none;clip-path:inset(-5% -5% -5% -5%)}}
-    .wf-end{margin-top:72px}
-    @media (max-width:960px){
-      .wf-pin{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);gap:8px;align-content:start;padding-top:12px}
-      .wf-list{display:none}
-      .wf-head .lede{font-size:15px}
-      .wf-n{font-size:34vw}
-      .wf-slide p{font-size:16px}
-    }
+  let active = 0, camX = 0;
+  const mouse = { x: 0, sx: 0 };
+  const kick = runner(stage, (time) => {
+    camX = lerp(camX, active * SP, reduce ? 1 : 0.08);
+    mouse.sx = lerp(mouse.sx, mouse.x, 0.06);
+    const d = Math.max(11.5, 7.4 / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
+    camera.position.set(camX + mouse.sx * 1.2, 3.1 + d * 0.1, d);
+    camera.lookAt(camX, 1.15, 0);
+    items.forEach((it) => {
+      const on = it.i === active;
+      const s = lerp(it.holder.scale.x, on ? 1.14 : 0.86, reduce ? 1 : 0.09);
+      it.holder.scale.setScalar(s);
+      it.holder.position.y = lerp(it.holder.position.y, on ? 0.32 : 0.14, reduce ? 1 : 0.09);
+      it.holder.rotation.y = on && !reduce ? Math.sin(time * 0.6) * 0.28 : lerp(it.holder.rotation.y, 0, 0.1);
+      it.edge.material.color.set(on ? C.blue : C.silver);
+      it.edge.material.opacity = on ? 0.95 : 0.4;
+      if (it.obj.userData.tick && (on || !reduce)) it.obj.userData.tick(time);
+    });
+  });
+  addEventListener('pointermove', (e) => { mouse.x = e.clientX / innerWidth - 0.5; if (reduce) kick(); }, { passive: true });
+  addEventListener('wf-select', (e) => { active = e.detail; kick(); });
 
-    /* 9 · Finale: container doors slide open on "Let's connect" */
-    .fin-track{height:230svh;view-timeline:--fin block}
-    .fin-pin{position:sticky;top:72px;height:calc(100svh - 72px);padding:0;overflow:hidden;display:flex;align-items:center}
-    .fin-pin .fin-inner{width:100%;animation:inner linear both;animation-timeline:--fin;animation-range:contain 0% contain 62%}
-    @keyframes inner{from{transform:scale(.9);opacity:.15}to{transform:none;opacity:1}}
-    .doors{display:block}
-    .door{position:absolute;top:0;bottom:0;width:50%;background:#c3c9d1;z-index:3;overflow:hidden}
-    .door-l{left:0;border-right:6px solid #7f8999;animation:doorL cubic-bezier(.6,0,.3,1) both;animation-timeline:--fin;animation-range:contain 4% contain 62%}
-    .door-r{right:0;border-left:6px solid #7f8999;animation:doorR cubic-bezier(.6,0,.3,1) both;animation-timeline:--fin;animation-range:contain 4% contain 62%}
-    @keyframes doorL{to{transform:translateX(-100%)}}
-    @keyframes doorR{to{transform:translateX(100%)}}
-    .door .ribs{position:absolute;inset:0;width:100%;height:100%}
-    .rod{position:absolute;top:5%;bottom:5%;width:12px;background:#8c96a6}
-    .rod::before,.rod::after{content:'';position:absolute;left:-6px;width:24px;height:10px;background:#7f8999}
-    .rod::before{top:-8px}.rod::after{bottom:-8px}
-    .door-l .rod.a{right:44px}.door-l .rod.b{right:92px}
-    .door-r .rod.a{left:44px}.door-r .rod.b{left:92px}
-    .handle{position:absolute;top:48%;width:34px;height:70px;background:#051240}
-    .door-l .handle{right:34px}.door-r .handle{left:34px}
-    .stencil{position:absolute;top:7%;font:600 clamp(10px,1.3vw,17px)/1.6 var(--sans);letter-spacing:.2em;text-transform:uppercase;color:#0a1330}
-    .door-l .stencil{left:6%}.door-r .stencil{right:6%;text-align:right}
+  // clicking an object selects its stage
+  const ray = new THREE.Raycaster(), v = new THREE.Vector2();
+  const pick = (e) => {
+    const b = host.getBoundingClientRect();
+    v.set(((e.clientX - b.left) / b.width) * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1);
+    ray.setFromCamera(v, camera);
+    const hit = ray.intersectObjects(items.map((i) => i.slot), true)[0];
+    if (!hit) return -1;
+    let o = hit.object; while (o && o.userData.i === undefined) o = o.parent;
+    return o ? o.userData.i : -1;
+  };
+  host.addEventListener('click', (e) => { const i = pick(e); if (i >= 0) dispatchEvent(new CustomEvent('wf-pick', { detail: i })); });
+  host.addEventListener('pointermove', (e) => { host.style.cursor = pick(e) >= 0 ? 'pointer' : 'default'; });
+  return kick;
+}
 
-    /* 8 · Skills reveal cell by cell */
-    .skill{animation:cellIn linear both;animation-timeline:view();animation-range:entry 0% entry 95%}
-    @keyframes cellIn{from{clip-path:inset(0 100% 0 0);opacity:0}to{clip-path:inset(0 0 0 0);opacity:1}}
+/* ── boot ── */
+async function boot() {
+  if (!webglOK()) return;
+  try {
+    await Promise.all([document.fonts.load('700 48px "Playfair Display"'), document.fonts.load('500 24px Inter')]);
+  } catch (e) { /* fall back to system fonts in textures */ }
+
+  const heroHost = document.querySelector('[data-hero-stage]');
+  if (heroHost) {
+    const canvas = heroHost.querySelector('canvas');
+    let st;
+    st = makeStage(canvas, { fov: 28, shadow: 11, env: 0.4, onResize: (cam, w, h) => st && st.fit && st.fit(cam, w, h) });
+    const kick = buildHero(st);
+    st.fit(st.camera, 0, 0);
+    heroHost.classList.add('has-3d');
+    kick();
+  }
+
+  const wfHost = document.querySelector('[data-wf-stage]');
+  if (wfHost) {
+    const canvas = wfHost.querySelector('canvas');
+    const st = makeStage(canvas, { fov: 30, shadow: 18, env: 0.4 });
+    const kick = buildWorkflow(st, wfHost);
+    wfHost.classList.add('has-3d');
+    kick();
   }
 }
-</style>
-</head>
-<body>
-
-<header>
-  <div class="wrap bar">
-    <a class="brand" href="#hero" aria-label="Abderraouffe Larbi — home">
-      <img src="assets/globe.png" width="44" height="44" alt="">
-      <span class="brand-name">Abderraouffe <span class="silver">Larbi</span></span>
-    </a>
-    <nav aria-label="Main">
-      <ul>
-        <li><a href="#about">About</a></li>
-        <li><a href="#experience">Experience</a></li>
-        <li><a href="#workflow">Workflow</a></li>
-        <li><a href="#skills">Skills</a></li>
-        <li><a href="#credentials">Credentials</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
-    </nav>
-  </div>
-</header>
-
-<main>
-
-<div class="intro">
-  <section id="hero" class="on-navy">
-    <div class="wrap hero-grid">
-      <div>
-        <p class="hero-role">Chargé des Moyens Généraux · FECO Information Technology</p>
-        <h1>
-          <span class="ln"><span style="--d:0">Procurement,</span></span>
-          <span class="ln"><span style="--d:1">operations <span class="silver">&amp;</span></span></span>
-          <span class="ln"><span style="--d:2" class="silver">continuous</span></span>
-          <span class="ln"><span style="--d:3" class="silver">improvement.</span></span>
-        </h1>
-        <div class="hero-rule"></div>
-        <p class="hero-copy">I run FECO’s purchase-to-payment cycle, asset traceability and key regulatory files, and I turn one-off tasks into documented, auditable processes.</p>
-        <div class="actions">
-          <a class="btn btn-solid" href="#contact">Get in touch</a>
-          <a class="btn btn-line" href="https://www.linkedin.com/in/abderraouffe-larbi/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
-          <a class="btn btn-line" href="#experience">View experience</a>
-        </div>
-      </div>
-      <div class="portrait">
-        <img src="assets/abderraouffe-larbi.webp" width="878" height="1200" alt="Portrait of Abderraouffe Larbi">
-      </div>
-    </div>
-  </section>
-
-  <section id="figures" aria-label="Key figures">
-    <div class="wrap fig-grid">
-      <div class="fig"><div class="fig-n"><span class="sr">12</span><span class="count c12" aria-hidden="true">12</span></div><div class="fig-l">Procurement operations run end to end</div></div>
-      <div class="fig"><div class="fig-n"><span class="sr">8.76 M DZD</span><span aria-hidden="true"><span class="count dec">8.76</span><small>M DZD</small></span></div><div class="fig-l">Total value of those operations</div></div>
-      <div class="fig"><div class="fig-n"><span class="sr">4</span><span class="count c4" aria-hidden="true">4</span></div><div class="fig-l">Taken through to bank payment</div></div>
-      <div class="fig"><div class="fig-n"><span class="sr">4</span><span class="count c4" aria-hidden="true">4</span></div><div class="fig-l">Tender files prepared, incl. ENTP and Sonatrach</div></div>
-    </div>
-  </section>
-</div>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-  <defs>
-    <pattern id="ribs-blue" width="14" height="46" patternUnits="userSpaceOnUse"><rect width="5" height="46" fill="#2f6fc0"/></pattern>
-    <pattern id="ribs-door" width="64" height="10" patternUnits="userSpaceOnUse"><rect width="26" height="10" fill="#aab3c0"/></pattern>
-    <g id="plane-art">
-      <polygon points="330,92 292,52 338,52 392,90" fill="#9aa3b2"/>
-      <polygon points="90,92 52,66 92,66 130,90" fill="#9aa3b2"/>
-      <path d="M52 100 Q52 84 78 84 L498 84 Q578 88 592 106 Q578 126 498 128 L78 128 Q52 128 52 112Z" fill="#ffffff"/>
-      <path d="M54 114 H574 Q556 126 498 128 H78 Q54 128 54 114Z" fill="#c3c9d1"/>
-      <polygon points="64,86 36,22 96,22 150,86" fill="#4a8fe8"/>
-      <rect x="140" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="164" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="188" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="212" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="236" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="260" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="284" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="308" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="332" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="356" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="380" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="404" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="428" y="96" width="11" height="9" rx="3" fill="#051240"/><rect x="452" y="96" width="11" height="9" rx="3" fill="#051240"/>
-      <path d="M508 94 L552 96 Q570 98 574 106 L508 106Z" fill="#051240"/>
-      <polygon points="318,116 214,184 270,184 404,120" fill="#c3c9d1"/>
-      <rect x="286" y="138" width="78" height="26" rx="13" fill="#8c96a6"/>
-      <rect x="352" y="143" width="20" height="16" rx="8" fill="#051240"/>
-      <polygon points="104,118 50,142 112,142 150,120" fill="#c3c9d1"/>
-    </g>
-  </defs>
-</svg>
-<div class="scene" style="--sky:#0b3a52;--sh:clamp(260px,32vw,460px)" aria-hidden="true">
-  <img class="bg" src="assets/bg-water.webp" alt="" width="2400" height="520" loading="lazy">
-  <img class="actor plane far" src="assets/plane.webp" alt="" width="720" height="640" loading="lazy">
-  <img class="actor plane" src="assets/plane.webp" alt="" width="720" height="640" loading="lazy">
-</div>
-
-<section id="about" class="reveal">
-  <div class="wrap about-grid">
-    <div>
-      <p class="eyebrow">About</p>
-      <h2>Building process where there was none.</h2>
-      <p class="lede" style="margin-bottom:20px">I joined FECO in October 2025 as its only commercial representative. In May 2026 I moved to General Services (MGX).</p>
-      <p>That move meant taking over procurement, stock and administration at once, with no formal handover. I learned each procedure by doing it and documented it as I went.</p>
-      <p>What I took from it: without documented, traceable processes, everything depends on one person’s memory. So I prioritised the workflow, the archive and asset codification.</p>
-      <a class="nl" href="https://www.linkedin.com/in/abderraouffe-larbi/" target="_blank" rel="noopener noreferrer">
-        <img src="assets/globe.png" width="56" height="56" alt="">
-        <span><span class="nl-k" style="display:block">My newsletter</span><span class="nl-t">Supply Chain <span class="silver">&amp; Co</span></span><span class="nl-d" style="display:block">I also publish a newsletter called Supply Chain &amp; Co.</span></span>
-      </a>
-      <div class="edu">
-        <div class="edu-row"><strong>Master’s — English Language Didactics</strong><span>2021 – 2023</span></div>
-        <div class="edu-row"><strong>Licence — English Language &amp; Literature</strong><span>2018 – 2021</span></div>
-      </div>
-    </div>
-    <div class="how">
-      <h3>How I work</h3>
-      <div class="how-item"><h4>Traceability first</h4><p>Every purchase should be followable from need to payment, with a complete archive.</p></div>
-      <div class="how-item"><h4>Ownership</h4><p>I build what is missing instead of waiting for it to be assigned.</p></div>
-      <div class="how-item"><h4>Cross-functional by necessity</h4><p>Procurement, administration and commercial work in one lean team.</p></div>
-      <div class="how-item"><h4>Continuous improvement</h4><p>Six Sigma and 5S principles applied to workstations, equipment and documents.</p></div>
-    </div>
-  </div>
-</section>
-
-<div class="scene" style="--sky:#0b3a52;--sh:clamp(170px,19vw,280px)" aria-hidden="true">
-  <img class="bg" src="assets/bg-road.webp" alt="" width="2400" height="520" loading="lazy">
-  <img class="actor truck" src="assets/truck.webp" alt="" width="1100" height="340" loading="lazy">
-</div>
-
-<section id="experience">
-  <div class="wrap">
-    <p class="eyebrow">Career</p>
-    <h2>Experience</h2>
-    <p class="lede">Two roles in my first year at FECO Information Technology, an Algerian IT solutions company.</p>
-
-    <div class="stack">
-      <article class="role">
-        <div class="role-top">
-          <div>
-            <h3>Chargé Commercial / Sales Executive</h3>
-            <p class="role-co">FECO Information Technology</p>
-          </div>
-          <div class="role-date">Oct 2025 – May 2026</div>
-        </div>
-        <p>The company’s only commercial representative: tenders, prospecting and its first online presence.</p>
-        <ul>
-          <li>Helped prepare four tender files, including ENTP and Sonatrach</li>
-          <li>Supported prospecting for FECO’s MES, WMS and WCS solutions</li>
-          <li>Created and configured the LinkedIn page, Facebook page and Google Business Profile in December 2025, and have managed them since</li>
-          <li>Helped grow the follower base with consistent, regular LinkedIn posting</li>
-        </ul>
-      </article>
-
-      <article class="role">
-        <div class="role-top">
-          <div>
-            <h3>Chargé des Moyens Généraux (MGX)</h3>
-            <p class="role-co">FECO Information Technology</p>
-          </div>
-          <div class="role-date">May 2026 – Present</div>
-        </div>
-        <p>Procurement, asset traceability and regulatory files for a growing company, so much of the scope was built rather than inherited.</p>
-        <ul>
-          <li>Owned the full purchasing cycle: requirement, supplier search, quotations, purchase order, reception, invoice, payment, archiving</li>
-          <li>12 operations worth 8.76 M DZD, 4 taken through to bank payment</li>
-          <li>Introduced the purchase-to-payment workflow, in use since 18 August 2026, plus expense-tracking documentation</li>
-          <li>Reconciled and tracked PDA stock, NFC equipment, validators, SIM cards and IT equipment, with assignments, décharges and transfers</li>
-          <li>Designed a fixed-asset identification structure and an Odoo codification roadmap</li>
-          <li>Prepared and submitted the Startup Label application; contributed to the MCLT authorization for importing sensitive equipment</li>
-          <li>Handled fiscal, banking, import and renewal documentation, with follow-up of INAPI and CACOBATPH matters</li>
-          <li>Applied Six Sigma and 5S to workstation, equipment and document organisation</li>
-        </ul>
-      </article>
-    </div>
-  </div>
-</section>
-
-<div class="scene" style="--sky:#0b3a52;--sh:clamp(220px,26vw,380px)" aria-hidden="true">
-  <img class="bg" src="assets/bg-water.webp" alt="" width="2400" height="520" loading="lazy">
-  <img class="actor ship" src="assets/ship.webp" alt="" width="1500" height="430" loading="lazy">
-</div>
-
-<section id="workflow" class="on-navy reveal">
-  <div class="wrap">
-    <div class="wf-track">
-      <div class="wf-pin">
-        <div class="wf-head">
-          <p class="eyebrow">Featured work</p>
-          <h2>The purchase-to-payment workflow</h2>
-          <p class="lede" style="color:var(--on-navy)">Introduced on 18 August 2026 so that every purchase is traceable from need to payment.</p>
-          <ol class="wf-list" aria-hidden="true">
-            <li style="--i:0"><b>01</b>Requirement</li>
-            <li style="--i:1"><b>02</b>Quotation</li>
-            <li style="--i:2"><b>03</b>Purchase order</li>
-            <li style="--i:3"><b>04</b>Reception</li>
-            <li style="--i:4"><b>05</b>Invoice</li>
-            <li style="--i:5"><b>06</b>Payment</li>
-            <li style="--i:6"><b>07</b>Archiving</li>
-          </ol>
-        </div>
-        <ol class="wf-slides">
-          <li class="wf-slide" style="--i:0"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><rect x="26" y="18" width="68" height="90" rx="6" fill="#c3c9d1"/><rect x="44" y="8" width="32" height="20" rx="4" fill="#ffffff"/><rect x="34" y="34" width="52" height="66" rx="2" fill="#ffffff"/><rect x="40" y="42" width="9" height="9" fill="#4a8fe8"/><rect x="55" y="44" width="26" height="6" fill="#c3c9d1"/><rect x="40" y="60" width="9" height="9" fill="#4a8fe8"/><rect x="55" y="62" width="26" height="6" fill="#c3c9d1"/><rect x="40" y="78" width="9" height="9" fill="#4a8fe8"/><rect x="55" y="80" width="26" height="6" fill="#c3c9d1"/></svg><span class="wf-n">01</span><h3>Requirement</h3><p>Every purchase starts from a defined need.</p></li>
-          <li class="wf-slide" style="--i:1"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><rect x="56" y="22" width="8" height="74" fill="#c3c9d1"/><rect x="34" y="94" width="52" height="9" rx="3" fill="#c3c9d1"/><rect x="14" y="28" width="92" height="7" rx="3" fill="#ffffff"/><rect x="21" y="35" width="3" height="26" fill="#c3c9d1"/><rect x="96" y="35" width="3" height="16" fill="#c3c9d1"/><path d="M6 61h38a19 19 0 0 1-38 0z" fill="#4a8fe8"/><path d="M76 51h38a19 19 0 0 1-38 0z" fill="#c3c9d1"/></svg><span class="wf-n">02</span><h3>Quotation</h3><p>Suppliers are searched and quotations compared.</p></li>
-          <li class="wf-slide" style="--i:2"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><path d="M26 10h46l22 22v78H26z" fill="#ffffff"/><path d="M72 10l22 22H72z" fill="#c3c9d1"/><rect x="36" y="42" width="40" height="6" fill="#c3c9d1"/><rect x="36" y="56" width="30" height="6" fill="#c3c9d1"/><rect x="36" y="70" width="24" height="6" fill="#c3c9d1"/><g transform="rotate(-12 82 88)"><circle cx="82" cy="88" r="21" fill="none" stroke="#4a8fe8" stroke-width="5"/><text x="82" y="95" text-anchor="middle" font-family="Playfair Display,Georgia,serif" font-weight="700" font-size="19" fill="#4a8fe8">BC</text></g></svg><span class="wf-n">03</span><h3>Purchase order</h3><p>The Bon de Commande formalises the choice.</p></li>
-          <li class="wf-slide" style="--i:3"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><polygon points="60,12 102,34 60,56 18,34" fill="#ffffff"/><polygon points="18,34 60,56 60,104 18,82" fill="#c3c9d1"/><polygon points="102,34 60,56 60,104 102,82" fill="#8c96a6"/><polygon points="50,17 70,27 60,32 40,22" fill="#4a8fe8"/><circle cx="92" cy="90" r="21" fill="#4a8fe8"/><path d="M82 90l7 7 13-14" fill="none" stroke="#fff" stroke-width="6"/></svg><span class="wf-n">04</span><h3>Reception</h3><p>Goods are received against the order.</p></li>
-          <li class="wf-slide" style="--i:4"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><path d="M24 8h72v104l-12-8-12 8-12-8-12 8-12-8-12 8z" fill="#ffffff"/><rect x="36" y="20" width="30" height="9" fill="#4a8fe8"/><rect x="36" y="40" width="48" height="6" fill="#c3c9d1"/><rect x="36" y="54" width="48" height="6" fill="#c3c9d1"/><rect x="36" y="68" width="34" height="6" fill="#c3c9d1"/><rect x="36" y="84" width="48" height="12" fill="#030b2c"/></svg><span class="wf-n">05</span><h3>Invoice</h3><p>The supplier invoice joins the purchase file.</p></li>
-          <li class="wf-slide" style="--i:5"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><polygon points="60,10 108,38 12,38" fill="#ffffff"/><rect x="22" y="46" width="12" height="42" fill="#c3c9d1"/><rect x="44" y="46" width="12" height="42" fill="#c3c9d1"/><rect x="66" y="46" width="12" height="42" fill="#c3c9d1"/><rect x="88" y="46" width="12" height="42" fill="#c3c9d1"/><rect x="12" y="92" width="96" height="9" fill="#ffffff"/><rect x="6" y="104" width="108" height="8" fill="#4a8fe8"/></svg><span class="wf-n">06</span><h3>Payment</h3><p>The purchase is paid. Four have gone through the bank so far.</p></li>
-          <li class="wf-slide" style="--i:6"><svg class="wf-ic" viewBox="0 0 120 120" aria-hidden="true"><rect x="16" y="38" width="88" height="70" rx="4" fill="#c3c9d1"/><rect x="10" y="20" width="100" height="22" rx="4" fill="#ffffff"/><rect x="40" y="56" width="40" height="18" rx="2" fill="#030b2c"/><rect x="48" y="86" width="24" height="9" rx="4" fill="#030b2c"/><rect x="16" y="38" width="88" height="6" fill="#4a8fe8"/></svg><span class="wf-n">07</span><h3>Archiving</h3><p>The complete file is archived, so the purchase can be traced end to end.</p></li>
-        </ol>
-      </div>
-    </div>
-
-    <div class="cal wf-end">
-      <div><p class="tag">Challenge</p><h3>Everything at once</h3><p>Moving from Sales to MGX meant taking over procurement, stock and administration together, with no formal handover.</p></div>
-      <div><p class="tag">Action</p><h3>Learn, document, coordinate</h3><p>I learned the procedures by doing them, documented each process as I went, and built the archive that makes every purchase traceable. Expense-tracking documents now give visibility over spending.</p></div>
-      <div><p class="tag">Lesson</p><h3>Don’t rely on memory</h3><p>Without documented, traceable processes, everything depends on one person’s memory. That is why I prioritised the workflow, the archive and asset codification.</p></div>
-    </div>
-  </div>
-</section>
-
-<div class="scene" style="--sky:#586455;--sh:clamp(150px,17vw,260px)" aria-hidden="true">
-  <img class="bg" src="assets/bg-rail.webp" alt="" width="2400" height="520" loading="lazy">
-  <img class="actor train" src="assets/train.webp" alt="" width="1800" height="380" loading="lazy">
-</div>
-
-<section id="skills" class="reveal">
-  <div class="wrap">
-    <p class="eyebrow">Competencies</p>
-    <h2>Skills</h2>
-    <div class="skills">
-      <div class="skill"><h3>Procurement &amp; purchasing</h3><ul><li>Supplier search and comparison</li><li>Quotations and purchase orders</li><li>Reception, invoicing, archiving</li></ul></div>
-      <div class="skill"><h3>Finance &amp; COMEX literacy</h3><ul><li>Financial literacy</li><li>COMEX procedures</li><li>Learned through training at Condor DFC</li></ul></div>
-      <div class="skill"><h3>Assets &amp; stock</h3><ul><li>Inventory management and tracking</li><li>Fixed-asset identification</li><li>Odoo codification</li></ul></div>
-      <div class="skill"><h3>Regulatory &amp; admin</h3><ul><li>Startup Label</li><li>MCLT authorization</li><li>INAPI, CACOBATPH follow-up</li><li>Fiscal, banking, import files</li></ul></div>
-      <div class="skill"><h3>Process improvement</h3><ul><li>Six Sigma (White Belt), DMAIC</li><li>5S workplace organisation</li><li>Procurement trackers and archives</li></ul></div>
-      <div class="skill"><h3>Commercial &amp; digital</h3><ul><li>Tender preparation</li><li>MES, WMS, WCS prospecting</li><li>LinkedIn, Facebook, Google Business</li></ul></div>
-    </div>
-    <p style="margin-top:28px;font-size:14px;color:var(--muted)">Tools: Microsoft Excel · Odoo · ClickUp · HubSpot · MS Office · Google Workspace</p>
-  </div>
-</section>
-
-<section id="credentials">
-  <div class="wrap cred-grid">
-    <div>
-      <p class="eyebrow">Credentials</p>
-      <h2>Certifications</h2>
-      <div class="cred"><h3>Lean Six Sigma White Belt</h3><p>CSSC — Council for Six Sigma Certification</p></div>
-      <div class="cred"><h3>Finance &amp; COMEX training</h3><p>Condor DFC</p></div>
-    </div>
-    <div class="community">
-      <p class="eyebrow">Community</p>
-      <h2>Scoutmaster &amp; youth mentor</h2>
-      <p>Since June 2025 I have served as a Scoutmaster, mentoring young people on leadership, communication and civic responsibility, and teaching English as a second language.</p>
-      <p>I also take part in community improvement, environmental activities and volunteer programmes.</p>
-    </div>
-  </div>
-</section>
-
-<section id="objectives">
-  <div class="wrap">
-    <p class="eyebrow">Looking ahead</p>
-    <h2>Objectives for the next 12 months</h2>
-    <div class="obj">
-      <div class="obj-row"><b>Traceability</b><span>100% of purchases run through the workflow with a complete archive.</span></div>
-      <div class="obj-row"><b>Reporting</b><span>A monthly procurement and expense report to management.</span></div>
-      <div class="obj-row"><b>Supplier management</b><span>A supplier evaluation and comparison grid for the main suppliers.</span></div>
-      <div class="obj-row"><b>Assets</b><span>Complete the Odoo codification and reconcile 100% of assets.</span></div>
-      <div class="obj-row"><b>Continuous improvement</b><span>Lead two documented DMAIC improvement projects, building on my White Belt.</span></div>
-      <div class="obj-row"><b>Skills</b><span>Advanced Excel and data analysis, Odoo and n8n, Six Sigma Yellow Belt, international procurement training, and Mandarin.</span></div>
-    </div>
-  </div>
-</section>
-
-<section id="contact" class="finale on-navy">
-  <div class="fin-track">
-    <div class="fin-pin">
-      <div class="wrap fin-inner">
-        <div>
-          <p class="eyebrow">Contact</p>
-          <h2>Let’s connect.</h2>
-          <p class="contact-sub">Open to professional conversations and collaboration around procurement, operations and supply chain.</p>
-        </div>
-        <div class="links">
-          <a class="lk" href="https://www.linkedin.com/in/abderraouffe-larbi/" target="_blank" rel="noopener noreferrer"><span><small>LinkedIn</small><b>abderraouffe-larbi</b></span><i aria-hidden="true">↗</i></a>
-          <a class="lk" href="mailto:Abderraouff.larbi@gmail.com"><span><small>Email</small><b>Abderraouff.larbi@gmail.com</b></span><i aria-hidden="true">↗</i></a>
-          <a class="lk" href="tel:+213669400902"><span><small>Phone</small><b>+213 669 400 902</b></span><i aria-hidden="true">↗</i></a>
-          <a class="lk" href="https://www.linkedin.com/in/abderraouffe-larbi/" target="_blank" rel="noopener noreferrer"><span><small>Newsletter</small><b>Supply Chain &amp; Co</b></span><i aria-hidden="true">↗</i></a>
-        </div>
-      </div>
-      <div class="doors"><div class="door door-l" aria-hidden="true"><svg class="ribs"><rect width="100%" height="100%" fill="url(#ribs-door)"/></svg><span class="stencil">Supply Chain &amp; Co<br>SCCO 202611 9</span><span class="rod a"></span><span class="rod b"></span><span class="handle"></span></div><div class="door door-r" aria-hidden="true"><svg class="ribs"><rect width="100%" height="100%" fill="url(#ribs-door)"/></svg><span class="stencil">22G1 · 20′ GP<br>Max gross 30 480 kg</span><span class="rod a"></span><span class="rod b"></span><span class="handle"></span></div></div>
-    </div>
-  </div>
-</section>
-
-</main>
-
-<footer>
-  <div class="wrap">
-    <div class="facts">
-      <div><small>Current position</small><span>Chargé des Moyens Généraux (MGX)</span></div>
-      <div><small>Company</small><span>FECO Information Technology</span></div>
-      <div><small>Location</small><span>Bordj Bou Arréridj, Algeria</span></div>
-      <div><small>Languages</small><span>Arabic · French · English</span></div>
-    </div>
-    <div class="foot-top">
-      <span>© 2026 Abderraouffe Larbi</span>
-      <span>Supply Chain &amp; Co</span>
-      <a href="#hero">Back to top ↑</a>
-    </div>
-  </div>
-</footer>
-
-</body>
-</html>
+boot().catch((e) => console.warn('3D scene unavailable', e));
